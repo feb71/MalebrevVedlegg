@@ -1,18 +1,17 @@
+import streamlit as st
 import fitz  # PyMuPDF
-import os
 from pathlib import Path
-import tkinter as tk
-from tkinter import filedialog, messagebox
+import re
 
-def combine_pdf_and_attachments(pdf_path, folder_path, output_path):
-    if not os.path.isfile(pdf_path):
-        messagebox.showerror("Feil", f"PDF-filen '{pdf_path}' ble ikke funnet.")
-        return
-
-    folder_path = Path(folder_path)
+def combine_pdf_and_attachments(pdf_file, folder_files):
+    # Åpne hoved-PDF-filen fra opplastingen
     combined_document = fitz.open()
-    original_document = fitz.open(pdf_path)
+    original_document = fitz.open(stream=pdf_file.read(), filetype="pdf")
+    
+    # Opprett en dictionary for vedleggene, med bare filnavnet (uten sti) som nøkkel
+    folder_dict = {Path(file.name).name: file for file in folder_files}
 
+    # Iterer gjennom hver side i hoved-PDF-filen
     for page_num in range(len(original_document)):
         # Legg til en side av målebrevet
         page = original_document.load_page(page_num)
@@ -23,55 +22,52 @@ def combine_pdf_and_attachments(pdf_path, folder_path, output_path):
         links_text = text.split("Vedlagte dokumenter:")[1].strip().split("\n") if "Vedlagte dokumenter:" in text else []
 
         for link_text in links_text:
-            link_text = link_text.strip()
-            if "\\" in link_text and "." in link_text:
-                file_name = link_text.split("\\")[-1].strip()
-                file_path = folder_path / file_name
+            # Fjern eventuelle ekstra mellomrom og unødvendige tegn
+            link_text = link_text.strip().replace("\\", "/").split("/")[-1]
+            
+            # Sjekk om det ser ut som et gyldig filnavn (f.eks., må slutte med .pdf)
+            if not re.match(r'.+\.pdf$', link_text):
+                continue  # Hopp over hvis ikke en gyldig filnavnstruktur
+            
+            if link_text in folder_dict:
+                attachment_file = folder_dict[link_text]
+                st.info(f"Legger til vedlegget: {link_text} for side {page_num + 1}")
+                
+                # Gå til starten av filen før lesing
+                attachment_file.seek(0)
+                
+                # Åpne vedleggs-PDF-en
+                attachment_document = fitz.open(stream=attachment_file.read(), filetype="pdf")
+                
+                # Sett inn alle sidene i vedleggsdokumentet
+                combined_document.insert_pdf(attachment_document)
+                attachment_document.close()
+            else:
+                st.warning(f"Fant ikke vedlegget: {link_text} i opplastede filer")
 
-                print(f"Prøver å finne filen: {file_path}")
-
-                if file_path.is_file():
-                    print(f"Filen '{file_path}' funnet, legger til i PDF.")
-                    attachment_document = fitz.open(file_path)
-                    combined_document.insert_pdf(attachment_document)
-                    attachment_document.close()
-                else:
-                    print(f"Advarsel: Filen '{file_name}' ble ikke funnet.")
-                    continue
-
-    original_document.close()
-
+    # Lagre det kombinerte dokumentet
+    output_path = 'kombinert_dokument.pdf'
     combined_document.save(output_path)
     combined_document.close()
-    messagebox.showinfo("Suksess", f"Kombinert PDF lagret som: {output_path}")
-    print(f"Kombinert PDF lagret som: {output_path}")
 
-def select_pdf_file():
-    file_path = filedialog.askopenfilename(title="Velg PDF-fil med målebrev", filetypes=[("PDF filer", "*.pdf")])
-    return file_path
-
-def select_folder():
-    folder_path = filedialog.askdirectory(title="Velg mappe med vedlegg")
-    return folder_path
-
-def select_output_file():
-    output_path = filedialog.asksaveasfilename(title="Lagre kombinert PDF som", defaultextension=".pdf", filetypes=[("PDF filer", "*.pdf")])
     return output_path
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.withdraw()
+# Streamlit-grensesnittet
+st.title("Kombiner målebrev med Vedlegg basert på forsidespesifikasjoner")
 
-    pdf_path = select_pdf_file()
-    if not pdf_path:
-        messagebox.showerror("Feil", "Ingen PDF-fil valgt. Avslutter.")
-    else:
-        folder_path = select_folder()
-        if not folder_path:
-            messagebox.showerror("Feil", "Ingen mappe valgt. Avslutter.")
-        else:
-            output_path = select_output_file()
-            if not output_path:
-                messagebox.showerror("Feil", "Ingen lagringsplass valgt. Avslutter.")
-            else:
-                combine_pdf_and_attachments(pdf_path, folder_path, output_path)
+# Last opp hoved-PDF-filen
+pdf_file = st.file_uploader("Last opp hoved PDF-filen", type="pdf")
+
+# Last opp alle vedleggs-PDF-filene
+folder_files = st.file_uploader("Last opp vedleggs-PDF-filer", type="pdf", accept_multiple_files=True)
+
+if pdf_file is not None and folder_files:
+    # Kombiner hoved-PDF og vedleggene
+    st.write("Behandler filene, vennligst vent...")
+    output_path = combine_pdf_and_attachments(pdf_file, folder_files)
+    
+    st.success("Kombinering fullført!")
+    
+    # Tilby den kombinerte filen for nedlasting
+    with open(output_path, "rb") as f:
+        st.download_button("Last ned kombinert PDF", f, file_name="kombinert_dokument.pdf")
