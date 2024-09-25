@@ -56,7 +56,7 @@ def combine_pdf_and_attachments(pdf_file, folder_files):
 st.title("Kombiner målebrev med Vedlegg basert på forsidespesifikasjoner")
 
 # Last opp hoved-PDF-filen
-pdf_file = st.file_uploader("Last opp hoved PDF-filen", type="pdf")
+pdf_file = st.file_uploader("Last opp PDF-filen med Målebrev fra BO", type="pdf")
 
 # Last opp alle vedleggs-PDF-filene
 folder_files = st.file_uploader("Last opp vedleggs-PDF-filer", type="pdf", accept_multiple_files=True)
